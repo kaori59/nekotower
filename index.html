@@ -164,15 +164,34 @@ function ac(){
   try{if(navigator.audioSession&&navigator.audioSession.type!=='playback')navigator.audioSession.type='playback'}catch(e){}
   if(!AC){try{AC=new (window.AudioContext||window.webkitAudioContext)()}catch(e){}}if(AC&&AC.state==='suspended')AC.resume();return AC}
 function meow(base=1,sad=false){
-  if(store.muted)return;const a=ac();if(!a)return;const t=a.currentTime;
-  const o=a.createOscillator(),f=a.createBiquadFilter(),g=a.createGain();o.type='sawtooth';f.type='bandpass';f.Q.value=3;
-  const f0=(430+Math.random()*120)*base, d=sad?1.1:.38;
-  o.frequency.setValueAtTime(f0*.85,t);
-  if(sad){o.frequency.linearRampToValueAtTime(f0*1.1,t+.16);o.frequency.linearRampToValueAtTime(f0*.95,t+.5);o.frequency.linearRampToValueAtTime(f0*.5,t+d)}
-  else{o.frequency.linearRampToValueAtTime(f0*1.35,t+.1);o.frequency.linearRampToValueAtTime(f0*.9,t+d)}
-  f.frequency.setValueAtTime(900,t);f.frequency.linearRampToValueAtTime(1900,t+.1);f.frequency.linearRampToValueAtTime(1000,t+d);
-  g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(.15,t+.04);g.gain.linearRampToValueAtTime(.11,t+d*.6);g.gain.linearRampToValueAtTime(0,t+d);
-  o.connect(f);f.connect(g);g.connect(a.destination);o.start(t);o.stop(t+d+.05);
+  // a small kitten voice: soft triangle tone + a little buzz, shaped by a mouth filter that opens "n → ya → a"
+  if(store.muted)return;const a=ac();if(!a)return;const t=a.currentTime+.01;
+  const d=sad?1.0:.27, f0=(sad?560:760)*base*(.96+Math.random()*.08);
+  const o1=a.createOscillator(),o2=a.createOscillator(),g2=a.createGain(),mouth=a.createBiquadFilter(),soft=a.createBiquadFilter(),g=a.createGain();
+  o1.type='triangle';o2.type='sawtooth';g2.gain.value=sad?.16:.22;
+  mouth.type='bandpass';mouth.Q.value=1.6;soft.type='lowpass';soft.frequency.value=sad?2600:3600;
+  const P=[o1.frequency,o2.frequency];
+  for(const f of P){
+    f.setValueAtTime(f0*.88,t);
+    if(sad){ // "にゃ～ぁ…": lifts a little, then sinks slowly
+      f.linearRampToValueAtTime(f0*1.06,t+.14);f.linearRampToValueAtTime(f0*.98,t+.45);f.exponentialRampToValueAtTime(f0*.6,t+d);
+    }else{ // "にゃっ♪": quick rise and a cute upturn at the end
+      f.linearRampToValueAtTime(f0*1.18,t+.07);f.linearRampToValueAtTime(f0*1.04,t+.17);f.linearRampToValueAtTime(f0*1.3,t+d);
+    }
+  }
+  if(sad){ // trembling voice
+    const lfo=a.createOscillator(),lg=a.createGain();lfo.frequency.value=6.5;lg.gain.value=f0*.035;
+    lfo.connect(lg);lg.connect(o1.frequency);lg.connect(o2.frequency);lfo.start(t);lfo.stop(t+d+.05);
+  }
+  mouth.frequency.setValueAtTime(600,t);mouth.frequency.linearRampToValueAtTime(sad?1700:2300,t+.06);
+  mouth.frequency.linearRampToValueAtTime(sad?1100:1700,t+d);
+  const v=sad?.3:.34;
+  g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(v*.5,t+.025);g.gain.linearRampToValueAtTime(v,t+.07);
+  g.gain.linearRampToValueAtTime(v*(sad?.7:.8),t+d*.7);g.gain.linearRampToValueAtTime(0,t+d);
+  o1.connect(mouth);o2.connect(g2);g2.connect(mouth);mouth.connect(soft);
+  const dry=a.createGain();dry.gain.value=.5;o1.connect(dry);dry.connect(soft);
+  soft.connect(g);g.connect(a.destination);
+  for(const o of[o1,o2]){o.start(t);o.stop(t+d+.05)}
 }
 function tone(freq,dur,type='sine',vol=.08,when=0,slide=0){
   if(store.muted)return;const a=ac();if(!a)return;const t=a.currentTime+when;
