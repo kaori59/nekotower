@@ -204,7 +204,7 @@ function celebrateUnlock(p){
 function clearCats(){for(const c of cats)Composite.remove(world,c.body);cats=[]}
 function reset(msg){
   bag=[];clearCats();floats=[];hearts=[];score=0;runBest=0;towerTop=0;held=null;nextAt=now+300;next=rollCat();
-  camTop=80-viewH;updateStats();if(msg)float(msg,WW/2,camTop+viewH*.4,{size:34,rainbow:true,life:1500});
+  camTop=80-viewH;visTop=0;holdSm=null;updateStats();if(msg)float(msg,WW/2,camTop+viewH*.4,{size:34,rainbow:true,life:1500});
 }
 function drop(){
   if(!started||!held)return;
@@ -213,7 +213,10 @@ function drop(){
   addCat(held,x,y);held=null;nextAt=now+550;
   if(Math.random()<.35)meow(1+Math.random()*.2);
 }
-function holdY(){return Math.max(camTop+DROP_Y,towerTop-U*4.2)}
+// the waiting cat follows the visible top of the tower smoothly, so it never jumps when cats wobble
+let visTop=0, holdSm=null;
+function holdTarget(){return Math.max(camTop+DROP_Y,visTop-U*4.2)}
+function holdY(){return holdSm===null?holdTarget():holdSm}
 function updateStats(){
   $('now').innerHTML=runBest+'<i>段</i>';$('best').innerHTML=store.best+'<i>段</i>';$('score').textContent=score;
 }
@@ -262,6 +265,8 @@ function update(){
     }
   }
   towerTop=top;
+  let vt=0;for(const c of cats)if(c.landed&&!c.falling&&c.body.position.y<60)vt=Math.min(vt,c.body.bounds.min.y);
+  visTop=vt;
   const dan=Math.max(0,Math.floor(-top/U+.3));
   if(dan>runBest){
     runBest=dan;
@@ -274,8 +279,9 @@ function update(){
     bump('now');updateStats();
   }
   // camera keeps the top of the tower in the middle of the view
-  const base=80-viewH, target=Math.min(base,top-Math.max(viewH*.44,DROP_Y+U*3.2));
+  const base=80-viewH, target=Math.min(base,Math.min(top,visTop+U)-Math.max(viewH*.44,DROP_Y+U*3.2));
   camTop+=(target-camTop)*.05;
+  const ht=holdTarget();holdSm=holdSm===null?ht:holdSm+(ht-holdSm)*(ht<holdSm?.12:.04);
   if(started&&!held&&now>nextAt){held=next;next=rollCat()}
   for(const f of floats)if(f.cat&&cats.includes(f.cat)){f.x=Math.max(50,Math.min(WW-50,f.cat.body.position.x));f.y=f.cat.body.position.y-38+(now-f.born)/f.life*30}
   floats=floats.filter(f=>now-f.born<f.life);
