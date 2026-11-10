@@ -53,6 +53,10 @@ body{background:var(--paper);color:var(--ink);font-family:var(--f-disp);overflow
 .btn.warn{background:var(--rose);border-color:var(--rose-deep);color:#fff}
 .stage{flex:1;min-height:0;position:relative;border-radius:24px;overflow:hidden;border:3px solid var(--line);touch-action:none}
 #c{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:pointer}
+#zoom{position:absolute;left:20px;top:8px;z-index:1;font:inherit;font-size:12px;font-weight:900;color:var(--ink);background:rgba(255,255,255,.82);
+  border:2px solid var(--line);border-radius:999px;padding:4px 11px;cursor:pointer}
+#zoom[aria-pressed="true"]{background:var(--rose);border-color:var(--rose-deep);color:#fff}
+#zoom:focus-visible{outline:3px solid var(--rose);outline-offset:2px}
 .dex{display:flex;justify-content:center;gap:4px;flex-wrap:wrap}
 .dex canvas{width:38px;height:32px}
 #start{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;
@@ -79,6 +83,7 @@ body{background:var(--paper);color:var(--ink);font-family:var(--f-disp);overflow
   </div>
   <div class="stage" id="stage">
     <canvas id="c" aria-label="ねこを積む場所。タップした位置にねこが落ちます"></canvas>
+    <button id="zoom" type="button" aria-pressed="false" hidden>ぜんたい</button>
     <div id="start">
       <h1>ねこタワー</h1>
       <p>ねこを積んで、どこまで高くなるかな</p>
@@ -246,7 +251,7 @@ function drop(){
   addCat(held,x,y);held=null;nextAt=now+550;
 }
 // the waiting cat follows the visible top of the tower smoothly, so it never jumps when cats wobble
-let visTop=0, holdSm=null;
+let visTop=0, holdSm=null, overview=false, ov=0;
 function holdTarget(){return Math.max(camTop+DROP_Y,visTop-U*2.2)}
 function holdY(){return holdSm===null?holdTarget():holdSm}
 function updateStats(){
@@ -428,7 +433,11 @@ function draw(){
   ctx.fillStyle='rgba(255,255,255,'+(.75-sa*.55)+')';
   for(const c of CLOUDS){const sy=(c[1]-camTop)*.55;if(sy>-60&&sy<viewH+40)cloud((c[0]+t*.004*c[2]*10)%(WW+120)-60,sy,c[2])}
 
-  ctx.save();ctx.translate(0,-camTop);
+  // whole-tower view: fit everything from the stool to a little above the top into the stage
+  ov+=((overview?1:0)-ov)*.12;if(Math.abs(ov-(overview?1:0))<.002)ov=overview?1:0;
+  const wTop=Math.min(towerTop,visTop)-U*2.5, wBot=CUSH_H+70, zFit=Math.min(1,viewH/(wBot-wTop));
+  const zc=1+(zFit-1)*ov, camC=camTop+((wBot-viewH/zFit)-camTop)*ov;
+  ctx.save();ctx.translate(WW/2,0);ctx.scale(zc,zc);ctx.translate(-WW/2,-camC);
   // stool and cushion
   const cx0=WW/2-CUSH_W/2;
   ctx.fillStyle='#b97b4f';ctx.fillRect(WW/2-CUSH_W*.36,CUSH_H+10,14,600);ctx.fillRect(WW/2+CUSH_W*.36-14,CUSH_H+10,14,600);
@@ -437,7 +446,7 @@ function draw(){
   ctx.fillStyle='rgba(255,255,255,.55)';for(let x=cx0+18;x<cx0+CUSH_W-6;x+=26)for(let y=9;y<CUSH_H;y+=14){ctx.beginPath();ctx.arc(x+((y/14|0)%2)*13,y,3,0,7);ctx.fill()}
   ctx.fillStyle='#e5839c';for(const s of[cx0+6,cx0+CUSH_W-6]){ctx.beginPath();ctx.arc(s,4,6,0,7);ctx.fill()}
   // measuring ribbon on the left edge
-  const yTop=camTop-20, yBot=camTop+viewH;
+  const yTop=camC-20, yBot=camC+viewH/zc;
   ctx.fillStyle='rgba(255,255,255,.55)';ctx.fillRect(0,Math.max(yTop,-99999),12,Math.min(yBot,0)-yTop);
   ctx.strokeStyle='rgba(120,90,100,.45)';ctx.fillStyle='rgba(80,60,70,.7)';ctx.lineWidth=1.2;ctx.textAlign='left';ctx.textBaseline='middle';
   for(let k=1;-k*U>yTop;k++){const y=-k*U;if(y>yBot)continue;const big=k%5===0;
@@ -452,7 +461,7 @@ function draw(){
     ctx.save();ctx.translate(b.position.x,b.position.y);ctx.rotate(b.angle);ctx.translate(0,c.offY);
     drawCat(c,c.falling?'sad':(now-(c.relief||-1e9)<1600||(c.still>500&&now-c.touch>350)),c.wob,t);ctx.restore()}
   // the cat waiting to drop
-  if(held){
+  if(held&&ov<.5){
     const x=Math.max(held.w/2+4,Math.min(WW-held.w/2-4,aimX)), y=holdY();
     const ly=landY(x,held.w);
     ctx.setLineDash([3,7]);ctx.strokeStyle='rgba(255,255,255,.8)';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(x,y+U*.6);ctx.lineTo(x,ly-6);ctx.stroke();ctx.setLineDash([]);
@@ -499,14 +508,17 @@ function drawDex(fresh){
 <script>
 /* ---------- input and loop ---------- */
 function toWorldX(e){const r=cv.getBoundingClientRect();return (e.clientX-r.left)/scale}
-cv.addEventListener('pointerdown',e=>{if(!started)return;aiming=true;aimX=toWorldX(e);try{cv.setPointerCapture(e.pointerId)}catch(_){}});
+const zoomBtn=$('zoom');
+function setOverview(v){overview=v;zoomBtn.setAttribute('aria-pressed',v);zoomBtn.textContent=v?'もどる':'ぜんたい'}
+zoomBtn.addEventListener('click',()=>setOverview(!overview));
+cv.addEventListener('pointerdown',e=>{if(!started)return;if(overview){setOverview(false);return}aiming=true;aimX=toWorldX(e);try{cv.setPointerCapture(e.pointerId)}catch(_){}});
 cv.addEventListener('pointermove',e=>{if(aiming||e.pointerType==='mouse')aimX=toWorldX(e)});
 cv.addEventListener('pointerup',e=>{if(!aiming)return;aiming=false;aimX=toWorldX(e);drop()});
 cv.addEventListener('pointercancel',()=>{aiming=false});
 addEventListener('keydown',e=>{if(!started)return;
   if(e.key==='ArrowLeft')aimX-=14;else if(e.key==='ArrowRight')aimX+=14;else if(e.key===' '||e.key==='Enter'){e.preventDefault();drop()}});
 
-$('go').addEventListener('click',()=>{ac();$('start').hidden=true;started=true;reset('スタート！');meow(1.1)});
+$('go').addEventListener('click',()=>{ac();$('start').hidden=true;zoomBtn.hidden=false;started=true;reset('スタート！');meow(1.1)});
 const muteBtn=$('mute');function showMute(){muteBtn.textContent=store.muted?'音 OFF':'音 ON'}showMute();
 muteBtn.addEventListener('click',()=>{store.muted=!store.muted;save();showMute();if(!store.muted)meow()});
 let resetArm=0;const resetBtn=$('reset');
