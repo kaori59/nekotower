@@ -289,12 +289,15 @@ function update(){
     }
   }
   towerTop=top;
-  const topDan=Math.floor(-top/U+.3);
-  for(const c of cats){const b=c.body;
-    if(b.isStatic||!c.landed||c.falling||c.still<300)continue;
-    if(Math.round(-b.bounds.min.y/U)<=topDan-FREEZE){Matter.Body.setStatic(b,true);c.frozen=true}}
   let vt=0;for(const c of cats)if(c.landed&&!c.falling&&c.body.position.y<60)vt=Math.min(vt,c.body.bounds.min.y);
   visTop=vt;
+  // the top FREEZE levels always stay soft: cats below them hold still, and if the top crumbles,
+  // the cats that are now near the top wake up again
+  const topDan=Math.floor(-Math.min(top,vt)/U+.3);
+  for(const c of cats){const b=c.body,lv=Math.round(-b.bounds.min.y/U);
+    if(c.frozen){if(lv>topDan-FREEZE){Matter.Body.setStatic(b,false);c.frozen=false;c.still=0}continue}
+    if(!c.landed||c.falling||c.still<300)continue;
+    if(lv<=topDan-FREEZE){Matter.Body.setStatic(b,true);c.frozen=true}}
   const dan=Math.max(0,Math.floor(-top/U+.3));
   if(dan>runBest){
     runBest=dan;
