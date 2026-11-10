@@ -92,6 +92,7 @@ body{background:var(--paper);color:var(--ink);font-family:var(--f-disp);overflow
 <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
 <script>
 const {Engine,Bodies,Composite,Events,Sleeping}=Matter;
+const FREEZE=4; // levels from the top that can still wobble
 const WW=400, U=44, DROP_Y=74, CUSH_W=236, CUSH_H=34;
 const FONT='"Zen Maru Gothic","Hiragino Maru Gothic ProN",system-ui,sans-serif';
 const PATS=[
@@ -136,7 +137,7 @@ function rollCat(){
   return {pat:pat.id,long,h:U,w:long?U*2.6:U*(1.3+Math.random()*.6),seed:Math.random()*1000};
 }
 function addCat(spec,x,y){
-  const r1=spec.h*.36, r2=spec.h*.2;
+  const r1=spec.h*.26, r2=spec.h*.2;
   const b=Bodies.rectangle(x,y,spec.w,spec.h,{chamfer:{radius:[r1,r1,r2,r2]},friction:1,frictionStatic:2,restitution:0,
     density:.0016,frictionAir:.012,slop:.03,sleepThreshold:45,label:'cat'});
   const c=Object.assign({},spec,{body:b,offY:(b.bounds.min.y+b.bounds.max.y)/2-b.position.y,wob:0,wv:0,born:now,still:0,counted:false,touch:0});
@@ -238,7 +239,7 @@ function drop(){
 }
 // the waiting cat follows the visible top of the tower smoothly, so it never jumps when cats wobble
 let visTop=0, holdSm=null;
-function holdTarget(){return Math.max(camTop+DROP_Y,visTop-U*4.2)}
+function holdTarget(){return Math.max(camTop+DROP_Y,visTop-U*2.2)}
 function holdY(){return holdSm===null?holdTarget():holdSm}
 function updateStats(){
   $('now').innerHTML=runBest+'<i>段</i>';$('best').innerHTML=store.best+'<i>段</i>';$('score').textContent=score;
@@ -288,6 +289,10 @@ function update(){
     }
   }
   towerTop=top;
+  const topDan=Math.floor(-top/U+.3);
+  for(const c of cats){const b=c.body;
+    if(b.isStatic||!c.landed||c.falling||c.still<300)continue;
+    if(Math.round(-b.bounds.min.y/U)<=topDan-FREEZE){Matter.Body.setStatic(b,true);c.frozen=true}}
   let vt=0;for(const c of cats)if(c.landed&&!c.falling&&c.body.position.y<60)vt=Math.min(vt,c.body.bounds.min.y);
   visTop=vt;
   const dan=Math.max(0,Math.floor(-top/U+.3));
@@ -317,7 +322,7 @@ function rng(s){return()=>{s=(s*9301+49297)%233280;return s/233280}}
 function mix(a,b,t){const p=x=>[1,3,5].map(i=>parseInt(x.slice(i,i+2),16));const A=p(a),B=p(b);
   return'rgb('+A.map((v,i)=>Math.round(v+(B[i]-v)*t)).join(',')+')'}
 function catPath(w,h){
-  const rt=h*.36,rb=h*.2,x=-w/2,y=-h/2;
+  const rt=h*.26,rb=h*.2,x=-w/2,y=-h/2;
   ctx.beginPath();ctx.moveTo(x+rt,y);ctx.lineTo(x+w-rt,y);ctx.arcTo(x+w,y,x+w,y+rt,rt);ctx.lineTo(x+w,y+h-rb);
   ctx.arcTo(x+w,y+h,x+w-rb,y+h,rb);ctx.lineTo(x+rb,y+h);ctx.arcTo(x,y+h,x,y+h-rb,rb);ctx.lineTo(x,y+rt);ctx.arcTo(x,y,x+rt,y,rt);ctx.closePath();
 }
@@ -395,6 +400,11 @@ const STARS=Array.from({length:60},()=>[Math.random()*WW,Math.random(),Math.rand
 const CLOUDS=Array.from({length:30},(_,i)=>[Math.random()*WW,-60-i*170-Math.random()*60,.7+Math.random()*.6]);
 function cloud(x,y,s){ctx.beginPath();ctx.arc(x,y,16*s,0,7);ctx.arc(x+18*s,y-8*s,20*s,0,7);ctx.arc(x+40*s,y,15*s,0,7);ctx.rect(x,y,40*s,15*s);ctx.fill()}
 
+// where the waiting cat would land: the highest cat (or the cushion) under its width
+function landY(x,w){let y=1e5;const l=x-w/2+4,r=x+w/2-4;
+  if(r>WW/2-CUSH_W/2&&l<WW/2+CUSH_W/2)y=0;
+  for(const c of cats){if(c.falling)continue;const b=c.body.bounds;if(b.max.x>l&&b.min.x<r)y=Math.min(y,b.min.y)}
+  return y}
 function draw(){
   ctx.setTransform(dpr*scale,0,0,dpr*scale,0,0);
   const t=now, height=Math.max(0,-camTop-viewH+80), nf=Math.min(1,height/(U*55));
@@ -433,7 +443,9 @@ function draw(){
   // the cat waiting to drop
   if(held){
     const x=Math.max(held.w/2+4,Math.min(WW-held.w/2-4,aimX)), y=holdY();
-    ctx.setLineDash([3,7]);ctx.strokeStyle='rgba(255,255,255,.8)';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(x,y+U*.6);ctx.lineTo(x,towerTop-4);ctx.stroke();ctx.setLineDash([]);
+    const ly=landY(x,held.w);
+    ctx.setLineDash([3,7]);ctx.strokeStyle='rgba(255,255,255,.8)';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(x,y+U*.6);ctx.lineTo(x,ly-6);ctx.stroke();ctx.setLineDash([]);
+    if(ly<1e4){ctx.fillStyle='rgba(90,50,70,.18)';ctx.beginPath();ctx.ellipse(x,ly-2,held.w*.46,5,0,0,7);ctx.fill()}
     ctx.save();ctx.translate(x,y);ctx.rotate(Math.sin(t*.003)*.05);drawCat(held,false,Math.sin(t*.006)*.08,t);ctx.restore();
   }
   // hearts and floating words
