@@ -226,7 +226,15 @@ function celebrateUnlock(p){
 }
 
 /* ---------- game flow ---------- */
-function clearCats(){for(const c of cats)Composite.remove(world,c.body);cats=[]}
+// "holding on": a settled cat is tied to where it rests by two soft springs (left and right),
+// so the lower tower can still sway and squish a little but always comes back
+const PIN_K=.03;
+function pin(c){const b=c.body,ca=Math.cos(b.angle),sa=Math.sin(b.angle);
+  c.pins=[-1,1].map(s=>{const lx=s*c.w*.32,ox=lx*ca,oy=lx*sa;
+    return Matter.Constraint.create({pointA:{x:b.position.x+ox,y:b.position.y+oy},bodyB:b,pointB:{x:ox,y:oy},length:0,stiffness:PIN_K,damping:.08,render:{visible:false}})});
+  Composite.add(world,c.pins);c.frozen=true}
+function unpin(c){if(c.pins)for(const k of c.pins)Composite.remove(world,k);c.pins=null;c.frozen=false}
+function clearCats(){for(const c of cats){unpin(c);Composite.remove(world,c.body)}cats=[]}
 function reset(msg){
   bag=[];clearCats();floats=[];hearts=[];score=0;runBest=0;towerTop=0;held=null;nextAt=now+300;next=rollCat();
   camTop=80-viewH;visTop=0;holdSm=null;updateStats();if(msg)float(msg,WW/2,camTop+viewH*.4,{size:34,rainbow:true,life:1500});
@@ -267,12 +275,12 @@ function update(){
       for(const f of floats)if(f.cat===c){f.cat=null;f.life=Math.min(f.life,now-f.born+200)}
       if(now-c.sadAt>450){float('セーフ！',p.x,b.bounds.min.y-14,{size:20,life:1300});addHeart(p.x-10,p.y-20);addHeart(p.x+10,p.y-24);meow(1.2)}
     }
-    if(!c.falling&&(off||p.y>CUSH_H+U*.4||c.moving>120)){
+    if(!c.falling&&!c.frozen&&(off||p.y>CUSH_H+U*.4||c.moving>120)){
       c.falling=true;c.sadAt=now;
       if(now-lastSad>500){lastSad=now;meow(.8,true);float('にゃ～…',p.x,p.y-40,{size:20,color:'#fff',life:1900,cat:c})}
     }
     if((c.falling&&p.y>Math.max(CUSH_H+80,camTop+viewH+90))||p.y>4000||p.x<-300||p.x>WW+300){
-      Composite.remove(world,c.body);cats.splice(i,1);
+      unpin(c);Composite.remove(world,c.body);cats.splice(i,1);
     }
   }
   // the tower
@@ -295,9 +303,9 @@ function update(){
   // the cats that are now near the top wake up again
   const topDan=Math.floor(-Math.min(top,vt)/U+.3);
   for(const c of cats){const b=c.body,lv=Math.round(-b.bounds.min.y/U);
-    if(c.frozen){if(lv>topDan-FREEZE){Matter.Body.setStatic(b,false);c.frozen=false;c.still=0}continue}
+    if(c.frozen){if(lv>topDan-FREEZE){unpin(c);c.still=0}continue}
     if(!c.landed||c.falling||c.still<300)continue;
-    if(lv<=topDan-FREEZE){Matter.Body.setStatic(b,true);c.frozen=true}}
+    if(lv<=topDan-FREEZE)pin(c)}
   const dan=Math.max(0,Math.floor(-top/U+.3));
   if(dan>runBest){
     runBest=dan;
